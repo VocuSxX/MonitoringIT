@@ -1,0 +1,61 @@
+{
+  "uid": "windows-monitoring",
+  "title": "Monitoring serwera Windows",
+  "tags": ["windows", "projekt"],
+  "schemaVersion": 39,
+  "refresh": "30s",
+  "time": { "from": "now-1h", "to": "now" },
+  "panels": [
+    {
+      "id": 1, "type": "stat", "title": "Status serwera",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 5, "w": 12, "x": 0, "y": 0 },
+      "fieldConfig": { "defaults": {
+        "mappings": [ { "type": "value", "options": {
+          "0": { "text": "DOWN", "color": "red" },
+          "1": { "text": "UP", "color": "green" } } } ] } },
+      "options": { "colorMode": "background", "graphMode": "none", "textMode": "value_and_name" },
+      "targets": [ { "refId": "A", "expr": "windows_up", "legendFormat": "{{hostname}}" } ]
+    },
+    {
+      "id": 2, "type": "stat", "title": "Usługi Windows",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 5, "w": 12, "x": 12, "y": 0 },
+      "fieldConfig": { "defaults": {
+        "mappings": [ { "type": "value", "options": {
+          "0": { "text": "STOP", "color": "red" },
+          "1": { "text": "OK", "color": "green" } } } ] } },
+      "options": { "colorMode": "background", "graphMode": "none", "textMode": "value_and_name" },
+      "targets": [ { "refId": "A", "expr": "windows_service_running", "legendFormat": "{{service}}" } ]
+    },
+    {
+      "id": 3, "type": "timeseries", "title": "CPU – użycie [%]",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 5 },
+      "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "max": 100 } },
+      "targets": [ { "refId": "A", "expr": "windows_cpu_usage_percent", "legendFormat": "{{hostname}}" } ]
+    },
+    {
+      "id": 4, "type": "timeseries", "title": "RAM – użycie [%]",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 5 },
+      "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "max": 100 } },
+      "targets": [ { "refId": "A", "legendFormat": "{{hostname}}",
+        "expr": "100 * (1 - windows_memory_free_bytes / windows_memory_total_bytes)" } ]
+    },
+    {
+      "id": 5, "type": "timeseries", "title": "Dyski – zajętość [%]",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 5 },
+      "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "max": 100 } },
+      "targets": [ { "refId": "A", "legendFormat": "{{hostname}} {{volume}}",
+        "expr": "100 - 100 * windows_disk_free_bytes / windows_disk_size_bytes" } ]
+    },
+    {
+      "id": 6, "type": "table", "title": "Aktywne alerty",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 7, "w": 24, "x": 0, "y": 13 },
+      "targets": [ { "refId": "A", "expr": "ALERTS{alertstate=\"firing\"}", "format": "table", "instant": true } ]
+    }
+  ]
+}

@@ -1,0 +1,98 @@
+rule_files:
+  - ../rules/alerts.yml
+
+evaluation_interval: 15s
+
+tests:
+  - name: Windows przestaje odpowiadać przez WinRM
+    interval: 30s
+    input_series:
+      - series: 'windows_up{job="windows-exporter", instance="windows-exporter:9182", host="100.64.3.7", hostname="WIN-LAB"}'
+        values: "1 1 0 0 0 0 0 0"
+    alert_rule_test:
+      - eval_time: 1m
+        alertname: SerwerNiedostepny
+        exp_alerts: []
+      - eval_time: 3m
+        alertname: SerwerNiedostepny
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              job: windows-exporter
+              instance: windows-exporter:9182
+              host: 100.64.3.7
+              hostname: WIN-LAB
+            exp_annotations:
+              summary: "Serwer WIN-LAB nie odpowiada"
+              description: "Od ponad minuty nie da się pobrać danych przez WinRM z 100.64.3.7."
+
+  - name: CPU stale na 95%
+    interval: 30s
+    input_series:
+      - series: 'windows_cpu_usage_percent{job="windows-exporter", instance="windows-exporter:9182", host="100.64.3.7", hostname="WIN-LAB"}'
+        values: "95x20"
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: WysokieUzycieCPU
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              job: windows-exporter
+              instance: windows-exporter:9182
+              host: 100.64.3.7
+              hostname: WIN-LAB
+            exp_annotations:
+              summary: "Wysokie użycie CPU na WIN-LAB"
+              description: "Średnie użycie CPU z 2 minut: 95% (próg 80%)."
+
+  - name: Krótki skok CPU nie wywołuje alertu
+    interval: 30s
+    input_series:
+      - series: 'windows_cpu_usage_percent{job="windows-exporter", instance="windows-exporter:9182", host="100.64.3.7", hostname="WIN-LAB"}'
+        values: "10 10 10 100 10 10 10 10 10 10 10 10"
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: WysokieUzycieCPU
+        exp_alerts: []
+
+  - name: Pełny dysk C
+    interval: 30s
+    input_series:
+      - series: 'windows_disk_free_bytes{job="windows-exporter", instance="windows-exporter:9182", host="100.64.3.7", hostname="WIN-LAB", volume="C:"}'
+        values: "5x10"
+      - series: 'windows_disk_size_bytes{job="windows-exporter", instance="windows-exporter:9182", host="100.64.3.7", hostname="WIN-LAB", volume="C:"}'
+        values: "100x10"
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: MaloMiejscaNaDysku
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              job: windows-exporter
+              instance: windows-exporter:9182
+              host: 100.64.3.7
+              hostname: WIN-LAB
+              volume: "C:"
+            exp_annotations:
+              summary: "Mało miejsca na dysku C: na WIN-LAB"
+              description: "Dysk C: jest zajęty w 95% (próg 90%)."
+
+  - name: Zatrzymana usługa Spooler
+    interval: 30s
+    input_series:
+      - series: 'windows_service_running{job="windows-exporter", instance="windows-exporter:9182", host="100.64.3.7", hostname="WIN-LAB", service="Spooler"}'
+        values: "1 1 0 0 0 0 0"
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: UslugaZatrzymana
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              job: windows-exporter
+              instance: windows-exporter:9182
+              host: 100.64.3.7
+              hostname: WIN-LAB
+              service: Spooler
+            exp_annotations:
+              summary: "Usługa Spooler nie działa na WIN-LAB"
+              description: "Monitorowana usługa Windows Spooler jest zatrzymana."

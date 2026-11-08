@@ -1,0 +1,58 @@
+groups:
+  - name: windows-servers
+    rules:
+      - alert: SerwerNiedostepny
+        expr: windows_up == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Serwer {{ $labels.hostname }} nie odpowiada"
+          description: "Od ponad minuty nie da się pobrać danych przez WinRM z {{ $labels.host }}."
+
+      - alert: WysokieUzycieCPU
+        expr: avg_over_time(windows_cpu_usage_percent[2m]) > 80
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Wysokie użycie CPU na {{ $labels.hostname }}"
+          description: "Średnie użycie CPU z 2 minut: {{ $value | printf \"%.0f\" }}% (próg 80%)."
+
+      - alert: WysokieUzycieRAM
+        expr: 100 * (1 - windows_memory_free_bytes / windows_memory_total_bytes) > 85
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Mało wolnej pamięci RAM na {{ $labels.hostname }}"
+          description: "RAM jest zajęty w {{ $value | printf \"%.0f\" }}% (próg 85%)."
+
+      - alert: MaloMiejscaNaDysku
+        expr: 100 - 100 * windows_disk_free_bytes / windows_disk_size_bytes > 90
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Mało miejsca na dysku {{ $labels.volume }} na {{ $labels.hostname }}"
+          description: "Dysk {{ $labels.volume }} jest zajęty w {{ $value | printf \"%.0f\" }}% (próg 90%)."
+
+      - alert: UslugaZatrzymana
+        expr: windows_service_running == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Usługa {{ $labels.service }} nie działa na {{ $labels.hostname }}"
+          description: "Monitorowana usługa Windows {{ $labels.service }} jest zatrzymana."
+
+  - name: monitoring-stack
+    rules:
+      - alert: AplikacjaMonitoringuNiedostepna
+        expr: up == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Aplikacja {{ $labels.job }} nie odpowiada"
+          description: "Kontener {{ $labels.job }} ({{ $labels.instance }}) nie odpowiada od ponad minuty."
