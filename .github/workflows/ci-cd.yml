@@ -1,0 +1,107 @@
+name: CI/CD monitoring
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  PROMETHEUS_IMAGE: prom/prometheus:v3.16.0
+  ALERTMANAGER_IMAGE: prom/alertmanager:v0.34.2
+
+jobs:
+  validate:
+    name: Walidacja i testy
+    runs-on: ubuntu-latest
+    steps:
+      - name: Pobranie kodu
+        uses: actions/checkout@v4
+
+      - name: Instalacja Pythona
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Testy jednostkowe exportera (pytest)
+        working-directory: exporter
+        run: |
+          pip install --quiet -r requirements-dev.txt
+          python -m pytest -v
+
+      - name: Budowanie obrazu Dockera exportera
+        run: docker build -t monitoring/windows-exporter:ci ./exporter
+
+      - name: Lint plikow YAML
+        run: |
+          pip install --quiet yamllint
+          yamllint -c .yamllint.yml .
+
+      - name: Sprawdzenie konfiguracji Prometheusa i regul alertow
+        run: |
+          docker run --rm -v "$PWD/prometheus:/etc/prometheus:ro" --entrypoint promtool \
+            "$PROMETHEUS_IMAGE" check config /etc/prometheus/prometheus.yml
+
+      - name: Testy jednostkowe regul alertow
+        run: |
+          docker run --rm -v "$PWD/prometheus:/etc/prometheus:ro" -w /etc/prometheus --entrypoint promtool \
+            "$PROMETHEUS_IMAGE" test rules tests/alerts_test.yml
+
+      - name: Sprawdzenie konfiguracji Alertmanagera
+        run: |
+          echo "https://discord.com/api/webhooks/0/ci-test" > /tmp/discord_webhook_url
+          docker run --rm -v "$PWD/alertmanager:/etc/alertmanager:ro" \
+            -v /tmp/discord_webhook_url:/run/secrets/discord_webhook_url:ro \
+            --entrypoint amtool "$ALERTMANAGER_IMAGE" check-config /etc/alertmanager/alertmanager.yml
+
+      - name: Sprawdzenie dashboardu Grafany (poprawny JSON)
+        run: python3 -m json.tool grafana/dashboards/windows.json > /dev/null
+
+      - name: Sprawdzenie docker-compose.yml
+        run: |
+          mkdir -p secrets
+          touch secrets/windows_password secrets/discord_webhook_url
+          GRAFANA_ADMIN_PASSWORD=ci docker compose config --quiet
+
+  deploy:
+    name: Wdrozenie na serwer Ubuntu
+    needs: validate
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: self-hosted
+    env:
+      DEPLOY_DIR: /opt/monitoring
+    steps:
+      - name: Pobranie kodu
+        uses: actions/checkout@v4
+
+      - name: Skopiowanie plikow do katalogu wdrozenia (bez sekretow)
+        run: |
+          rsync -a --delete \
+            --exclude '.git' --exclude '.env' --exclude 'secrets/' \
+            ./ "$DEPLOY_DIR/"
+
+      - name: Budowanie exportera i aktualizacja kontenerow
+        working-directory: /opt/monitoring
+        run: |
+          docker compose pull --ignore-buildable
+          docker compose up -d --build --remove-orphans
+
+      - name: Przeladowanie konfiguracji Prometheusa i Alertmanagera
+        run: |
+          sleep 5
+          curl -fsS -X POST http://localhost:9090/-/reload
+          curl -fsS -X POST http://localhost:9093/-/reload
+
+      - name: Health check
+        run: |
+          for url in http://localhost:9182/metrics http://localhost:9090/-/healthy http://localhost:9093/-/healthy http://localhost:3000/api/health; do
+            for i in $(seq 1 12); do
+              if curl -fsS "$url" > /dev/null; then echo "OK  $url"; break; fi
+              if [ "$i" -eq 12 ]; then echo "BLAD $url"; exit 1; fi
+              sleep 5
+            done
+          done
+
+      - name: Czy exporter widzi serwer Windows
+        run: |
+          curl -fsS http://localhost:9182/metrics | grep '^windows_up'
